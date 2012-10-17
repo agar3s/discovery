@@ -2,6 +2,7 @@ import os
 import re
 
 from collections import OrderedDict
+from utils import substring
 
 file_ommiters = [".pyc",".png",".svg",".gif",".jpg",".tmp",".ico",""]
 dir_ommiters = [".git"]
@@ -25,14 +26,7 @@ def get_structure(path):
     return structure
 
 
-pattern = {"django":["/?[A-Za-z0-9-_ ]+/manage.py$",
-                     "/?[A-Za-z0-9-_ ]+/urls.py$"],
-           "rails": ["/?[A-Za-z0-9-_ ]+/Gemfile$"],
-           "nodejs":["/?[A-Za-z0-9-_ ]+/package.json$"]
-           }
-
-
-def get_python_analysis(structure):
+def get_python_analysis(structure, deepest=-1):
     q="(^from .* import .*$|^import .*$)+"
 
     results = []
@@ -50,13 +44,15 @@ def get_python_analysis(structure):
 
         elif result.startswith("from"):
             result = result.replace("from ","")
-            package, imports = result.split("import")
+            package, imports = result.split(" import ")
             package = package.strip()
             imports = imports.replace(" ","").split(",")
             for imp in imports:
                 temps.append(package+"."+imp)
 
         for tmp in temps:
+            if deepest > -1:
+                tmp = substring(tmp, ".",deepest)
             if tmp in libs:
                 libs[tmp] += 1
             else:
@@ -66,15 +62,32 @@ def get_python_analysis(structure):
 
 
 
-def get_javascript_analysis(structure):
-    pass
+def get_javascript_analysis(structure, deepest=-1):
+    q = "require\(.*\)"
+    results = []
+    for data in structure:
+        if data.endswith(".js"):
+            f = open(data, 'r')
+            results += re.findall(q, f.read(), re.M)
+    
+    libs = {}
+    q = "\".*\"|'.*'"
+    for result in results:
+        result = re.findall(q, result)[0]
+        result = result.replace("'","").replace('"','')
 
+        if result in libs:
+            libs[result] += 1
+        else:
+            libs[result] = 1
+
+    return libs
 
 def get_ruby_analysis(structure):
-    pass
+    return structure
 
 
-def get_framework(path):
+def get_framework(path, deepest=-1):
     
     language = {}
     ext = ""
@@ -92,11 +105,13 @@ def get_framework(path):
     result = None
     ext = max_language.keys()[-1]
     if ext == ".py":
-        result = get_python_analysis(structure)
+        result = get_python_analysis(structure, deepest)
     elif ext == ".rb":
         result = get_ruby_analysis(structure)
     elif ext == ".js":
         result = get_javascript_analysis(structure)
+    else:
+        result = max_language
 
     return result
 
