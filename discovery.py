@@ -63,7 +63,7 @@ def get_python_analysis(structure, deepest=-1):
 
 
 def get_javascript_analysis(structure, deepest=-1):
-    q = "require\(.*\)"
+    q = "require\([a-zA-Z0-9\-._\"'/]+\)"
     results = []
     for data in structure:
         if data.endswith(".js"):
@@ -72,10 +72,18 @@ def get_javascript_analysis(structure, deepest=-1):
     
     libs = {}
     q = "\".*\"|'.*'"
+    p = "[\d\w\-]+$"
     for result in results:
-        result = re.findall(q, result)[0]
-        result = result.replace("'","").replace('"','')
-
+        result = re.findall(q, result)
+        if len(result) == 0:
+            continue
+        result = result[0]
+        result = result.replace("'","").replace('"','').replace(".js","")
+        result = re.findall(p,result)
+        if len(result) == 0:
+            continue
+        result = result[0]
+        
         if result in libs:
             libs[result] += 1
         else:
