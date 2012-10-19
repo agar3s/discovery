@@ -1,11 +1,51 @@
 import os
 import re
+import sqlite3
 
 from collections import OrderedDict
 from utils import substring
 
 file_ommiters = [".pyc",".png",".svg",".gif",".jpg",".tmp",".ico",""]
 dir_ommiters = [".git"]
+
+table_names= {".py":"PYTHON"}
+db_queries = {"get_column_names":"PRAGMA table_info(%s)",
+              "insert_column":"ALTER TABLE PYTHON ADD %s int default 0",
+              "insert_repo":"INSERT INTO %s %s VALUES %s"}
+
+def get_connection():
+    connection = sqlite3.connect("data.db")
+
+def closest_framework(results, ext, framework=None):
+    connection = sqlite3.connect("data.db")
+    cursor = connection.cursor()
+    
+    #inspect and insert new columns if is neccesary
+    columns = cursor.execute(db_queries["get_column_names"] % table_names[ext])
+    columns = [x[1] for x in columns.fetchall()]
+
+    for r, v in results.items():
+        if ("ct_"+r) not in columns:
+            cursor.execute(db_queries["insert_column"] % ("ct_"+r))
+
+    connection.commit()
+
+    if not framework:
+        #search the neighbor 
+        pass
+    else:
+        results["v_c"] = 1    
+
+    #insert the results
+    results["fw_c"] = framework
+    
+    names = str(tuple(["ct_"+x for x in results.keys()]))
+    values = str(tuple(results.values()))
+    cursor.execute(db_queries["insert_repo"] % (table_names[ext],names,values))
+    connection.commit()
+
+    return framework
+
 
 def get_structure(path):
     """
@@ -26,8 +66,9 @@ def get_structure(path):
     return structure
 
 
-def get_python_analysis(structure, deepest=-1):
-    q="(^from .* import .*$|^import .*$)+"
+def get_python_analysis(structure, deepest=0):
+    s="[a-zA-Z0-9\-._\"'/]*"
+    q="(^from %s import %s$|^import %s$)+" % (s,s,s)
 
     results = []
     for data in structure:
@@ -58,11 +99,13 @@ def get_python_analysis(structure, deepest=-1):
             else:
                 libs[tmp] = 1
 
+    if "" in libs:
+        del(libs[""])
     return libs
 
 
 
-def get_javascript_analysis(structure, deepest=-1):
+def get_javascript_analysis(structure, deepest=0):
     q = "require\([a-zA-Z0-9\-._\"'/]+\)"
     results = []
     for data in structure:
@@ -83,7 +126,7 @@ def get_javascript_analysis(structure, deepest=-1):
         if len(result) == 0:
             continue
         result = result[0]
-        
+
         if result in libs:
             libs[result] += 1
         else:
@@ -95,33 +138,45 @@ def get_ruby_analysis(structure):
     return structure
 
 
-def get_framework(path, deepest=-1):
-    
-    language = {}
+def get_framework(path, deepest=0, framework=None, save=True):
+    """ get_framework
+        recieves a filesystem path of a project repository and
+        classify into a framework project type.
+        path is the filesystem directory
+        deepest is how many detail will have the library analysis
+        by default the program takes the full detail. zero is only
+        for the library name.
+        framework is the name of the framework used in the project
+        use this only for training proposes
+    """
+
+    language = []
     ext = ""
     structure = get_structure(path)
-
+    size = 0
     for x in structure:
         name, ext = os.path.splitext(x)
-        if ext in language:
-            language[ext] += 1
-        else:
-            language[ext] = 1
-
-    max_language = OrderedDict(sorted(language.items(), key=lambda t:t[1]))
+        if ext not in language:
+            language.append(ext)
 
     result = None
-    ext = max_language.keys()[-1]
-    if ext == ".py":
-        result = get_python_analysis(structure, deepest)
-    elif ext == ".rb":
-        result = get_ruby_analysis(structure)
-    elif ext == ".js":
-        result = get_javascript_analysis(structure)
-    else:
-        result = max_language
 
-    return result
+    frameworks = []
+
+    for ext in reversed(language):
+        if ext == ".py":
+            result = get_python_analysis(structure, deepest=0)
+            if save:
+                framework = closest_framework(result, ext, framework=framework.lower())
+                frameworks.append(framework)
+        elif ext == ".rb":
+            result = get_ruby_analysis(structure)
+        elif ext == ".js":
+            result = get_javascript_analysis(structure)
+        else:
+            result = language
+
+    return frameworks
 
 if __name__ == "__main__":
     import doctest
